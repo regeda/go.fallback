@@ -37,8 +37,6 @@ func MasterSlave(master, slave Requester, shiftTimeout time.Duration) Requester 
 				}
 				once.Do(slaveRunner)
 				return sout, serr
-			case <-ctx.Done():
-				return nil, ctx.Err()
 			}
 		}
 	})

@@ -32,6 +32,16 @@ func TestMasterSlave(t *testing.T) {
 			return s, err
 		}
 	}
+	mockctx := func(s string, err error, sleep time.Duration) RequesterFunc {
+		return func(ctx context.Context, in interface{}) (interface{}, error) {
+			select {
+			case <-time.Tick(sleep):
+				return s, err
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}
+	}
 
 	t.Run("master is faster than timeout", func(t *testing.T) {
 		service := MasterSlave(
@@ -122,11 +132,24 @@ func TestMasterSlave(t *testing.T) {
 		assert.Equal(t, "slave", out)
 	})
 
-	t.Run("error if global context failed", func(t *testing.T) {
+	t.Run("shifted slave should return if global context deadlined", func(t *testing.T) {
 		service := MasterSlave(
-			mocksleep("master", nil, time.Second),
-			mock("slave", nil, 0),
-			time.Second,
+			mockctx("master", nil, time.Second),
+			mock("slave", nil, 1),
+			time.Millisecond,
+		)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second/2)
+		defer cancel()
+		out, err := service.Request(ctx, struct{}{})
+		assert.Nil(t, err)
+		assert.Equal(t, "slave", out)
+	})
+
+	t.Run("error if global context deadlined", func(t *testing.T) {
+		service := MasterSlave(
+			mockctx("master", nil, time.Second),
+			mockctx("slave", nil, time.Second),
+			time.Millisecond,
 		)
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second/2)
 		defer cancel()

@@ -22,8 +22,12 @@ func (w *OpenWeather) Request(ctx context.Context, in interface{}) (interface{},
 }
 
 service := failover.MasterSlave(&AccuWeather{}, &OpenWeather{}, time.Second)
-weather, err := service.Request(context.Background(), NewWeatherRequest())
+resp, err := service.Request(context.Background(), NewWeatherRequest())
 ...
+switch weather := resp.(type) {
+case AccuWeatherResponse:
+case OpenWeatherResponse:
+}
 ```
 
 If you need more that two providers you can create a tree of master-slave requests:
