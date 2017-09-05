@@ -30,7 +30,7 @@ case OpenWeatherResponse:
 }
 ```
 
-If you need more that two providers you can create a tree of master-slave requests:
+If you need more than two providers you can create a tree of master-slave requests:
 ```go
 failover.MasterSlave(
     failover.MasterSlave(&AccuWeather{}, &OpenWeather{}, time.Second),
