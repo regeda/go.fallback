@@ -2,7 +2,6 @@ package failover
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
@@ -11,161 +10,140 @@ import (
 )
 
 func TestMasterSlave(t *testing.T) {
-	mock := func(s string, err error, count int) RequesterFunc {
-		return func(context.Context, interface{}) (interface{}, error) {
-			if count == 0 {
-				t.Fatalf("mock %s is zombie", s)
-			}
-			count--
-			return s, err
-		}
-	}
-
-	mocksleep := func(s string, err error, sleep time.Duration) RequesterFunc {
-		var fulfilled bool
-		return func(context.Context, interface{}) (interface{}, error) {
-			if fulfilled {
-				t.Fatalf("mock %s is zombie", s)
-			}
-			fulfilled = true
-			time.Sleep(sleep)
-			return s, err
-		}
-	}
-	mockctx := func(s string, err error, sleep time.Duration) RequesterFunc {
-		return func(ctx context.Context, in interface{}) (interface{}, error) {
-			select {
-			case <-time.Tick(sleep):
-				return s, err
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			}
-		}
-	}
-
 	t.Run("master is faster than timeout", func(t *testing.T) {
-		service := MasterSlave(
-			mock("master", nil, 1),
-			mock("slave", nil, 0),
+		var out string
+		err := MasterSlave(
+			context.Background(),
 			time.Second,
+			mocker(t).Done("master", &out).Count(1),
+			mocker(t).Done("slave", &out).Count(0),
 		)
-		out, err := service.Request(context.Background(), struct{}{})
 		require.Nil(t, err)
 		assert.Equal(t, "master", out)
 	})
 
 	t.Run("slave should return if master failed", func(t *testing.T) {
-		service := MasterSlave(
-			mock("", errors.New("some shit"), 1),
-			mock("slave", nil, 1),
+		var out string
+		err := MasterSlave(
+			context.Background(),
 			time.Second,
+			mocker(t).Done("master", &out).WithError("some shit").Count(1),
+			mocker(t).Done("slave", &out).Count(1),
 		)
-		out, err := service.Request(context.Background(), struct{}{})
 		require.Nil(t, err)
 		assert.Equal(t, "slave", out)
 	})
 
 	t.Run("slave failed after master failed", func(t *testing.T) {
-		service := MasterSlave(
-			mock("", errors.New("master: some shit"), 1),
-			mock("", errors.New("slave: some shit"), 1),
+		var out string
+		err := MasterSlave(
+			context.Background(),
 			time.Second,
+			mocker(t).Done("master", &out).WithError("master: some shit").Count(1),
+			mocker(t).Done("slave", &out).WithError("slave: some shit").Count(1),
 		)
-		out, err := service.Request(context.Background(), struct{}{})
 		require.NotNil(t, err)
 		assert.Contains(t, err.Error(), "slave: some shit")
 		require.Empty(t, out)
 	})
 
 	t.Run("slave should run once if master failed", func(t *testing.T) {
-		service := MasterSlave(
-			mock("", errors.New("master: some shit"), 1),
-			mocksleep("slave", nil, time.Second),
+		var out string
+		err := MasterSlave(
+			context.Background(),
 			time.Second,
+			mocker(t).Done("master", &out).WithError("master: some shit").Count(1),
+			mocker(t).Done("slave", &out).Sleep(time.Second),
 		)
-		out, err := service.Request(context.Background(), struct{}{})
 		require.Nil(t, err)
 		assert.Equal(t, "slave", out)
 	})
 
 	t.Run("master should return with some delay", func(t *testing.T) {
-		service := MasterSlave(
-			mocksleep("master", nil, time.Second),
-			mock("slave", nil, 1),
+		var out string
+		err := MasterSlave(
+			context.Background(),
 			time.Millisecond,
+			mocker(t).Done("master", &out).Sleep(time.Second),
+			mocker(t).Done("slave", &out).Count(1),
 		)
-		out, err := service.Request(context.Background(), struct{}{})
 		require.Nil(t, err)
 		assert.Equal(t, "master", out)
 	})
 
 	t.Run("slave should return with some delay if master failed", func(t *testing.T) {
-		service := MasterSlave(
-			mock("", errors.New("some shit"), 1),
-			mocksleep("slave", nil, time.Second),
+		var out string
+		err := MasterSlave(
+			context.Background(),
 			time.Second/2,
+			mocker(t).Done("master", &out).WithError("some shit").Count(1),
+			mocker(t).Done("slave", &out).Sleep(time.Second),
 		)
-		out, err := service.Request(context.Background(), struct{}{})
 		require.Nil(t, err)
 		assert.Equal(t, "slave", out)
 	})
 
 	t.Run("slave should return if master failed after long delay", func(t *testing.T) {
-		service := MasterSlave(
-			mocksleep("", errors.New("some shit"), time.Second),
-			mock("slave", nil, 1),
+		var out string
+		err := MasterSlave(
+			context.Background(),
 			time.Second/2,
+			mocker(t).Done("master", &out).WithError("some shit").Sleep(time.Second),
+			mocker(t).Done("slave", &out).Count(1),
 		)
-		out, err := service.Request(context.Background(), struct{}{})
 		require.Nil(t, err)
 		assert.Equal(t, "slave", out)
 	})
 
 	t.Run("slave should return with delay if master failed after long delay", func(t *testing.T) {
-		service := MasterSlave(
-			mocksleep("", errors.New("some shit"), time.Second),
-			mocksleep("slave", nil, 2*time.Second),
+		var out string
+		err := MasterSlave(
+			context.Background(),
 			time.Millisecond,
+			mocker(t).Done("master", &out).WithError("some shit").Sleep(time.Second),
+			mocker(t).Done("slave", &out).Sleep(2*time.Second),
 		)
-		out, err := service.Request(context.Background(), struct{}{})
 		require.Nil(t, err)
 		assert.Equal(t, "slave", out)
 	})
 
 	t.Run("shifted slave should return if global context deadlined", func(t *testing.T) {
-		service := MasterSlave(
-			mockctx("master", nil, time.Second),
-			mock("slave", nil, 1),
-			time.Millisecond,
-		)
+		var out string
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second/2)
 		defer cancel()
-		out, err := service.Request(ctx, struct{}{})
+		err := MasterSlave(
+			ctx,
+			time.Millisecond,
+			mocker(t).Done("master", &out).Context(time.Second),
+			mocker(t).Done("slave", &out).Count(1),
+		)
 		assert.Nil(t, err)
 		assert.Equal(t, "slave", out)
 	})
 
 	t.Run("error if global context deadlined", func(t *testing.T) {
-		service := MasterSlave(
-			mockctx("master", nil, time.Second),
-			mockctx("slave", nil, time.Second),
-			time.Millisecond,
-		)
+		var out string
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second/2)
 		defer cancel()
-		out, err := service.Request(ctx, struct{}{})
+		err := MasterSlave(
+			ctx,
+			time.Millisecond,
+			mocker(t).Done("master", &out).Context(time.Second),
+			mocker(t).Done("slave", &out).Context(time.Second),
+		)
 		assert.NotNil(t, err)
 		assert.Equal(t, context.DeadlineExceeded, err)
 		assert.Empty(t, out)
 	})
 
 	t.Run("master should return regardless slave slow exec", func(t *testing.T) {
-		service := MasterSlave(
-			mocksleep("master", nil, time.Second),
-			mocksleep("slave", nil, 2*time.Second),
+		var out string
+		err := MasterSlave(
+			context.Background(),
 			time.Second/2,
+			mocker(t).Done("master", &out).Sleep(time.Second),
+			mocker(t).Done("slave", &out).Sleep(2*time.Second),
 		)
-		out, err := service.Request(context.Background(), struct{}{})
 		require.Nil(t, err)
 		assert.Equal(t, "master", out)
 	})
