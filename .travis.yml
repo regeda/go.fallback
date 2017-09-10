@@ -8,5 +8,6 @@ go:
 
 install:
   - go get github.com/stretchr/testify
+  - go get golang.org/x/sync/errgroup
 
 script: go test -v
