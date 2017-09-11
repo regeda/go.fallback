@@ -5,10 +5,37 @@
 
 Failover approaches and algorithms aimed to make your request stable and reliable.
 
+## Master-Master
+
+The approach emits successful response from a faster master.
+
+```go
+func slow(context.Context) (error, func()) {
+    time.Sleep(time.Second)
+    return nil, func() {
+        fmt.Println("slow")
+    }
+}
+
+func fast(context.Context) (error, func()) {
+    return nil, func() {
+        fmt.Println("fast")
+    }
+}
+
+err := failover.MasterMaster(
+    context.Background(),
+    failover.Handler(slow),
+    failover.Handler(fast),
+)
+
+// console prints "fast"
+```
+
 ## Master-Slave
 
-The approach executes successful master response otherwise a slave result will be acquired.
-A slave can shift early before a master complete a job. But if a master was lucky then a slave result will be omitted anyway.
+The approach emits successful master response otherwise a slave result will be acquired.
+A slave can shift early before a master complete a job. But if a master was lucky then a slave result will be declined anyway.
 > You shouldn't care about locks in callback functions because they are thread-safe executed.
 
 ```go

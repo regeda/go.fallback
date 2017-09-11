@@ -6,10 +6,10 @@ import (
 	"time"
 )
 
-// MasterSlave executes successful master response otherwise a slave result will be acquired.
+// MasterSlave emits successful master response otherwise a slave result will be acquired.
 //
 // A slave can shift early before a master complete a job.
-// But if a master was lucky then a slave result will be omitted.
+// But if a master was lucky then a slave result will be declined.
 func MasterSlave(ctx context.Context, shiftTimeout time.Duration, master, slave Handler) error {
 	shift := time.NewTimer(shiftTimeout)
 	defer shift.Stop()
