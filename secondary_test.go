@@ -12,6 +12,16 @@ import (
 )
 
 func TestSecondary(t *testing.T) {
+	failOrExit := func(ctx context.Context) error {
+		select {
+		case <-time.Tick(time.Second):
+			t.FailNow()
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+
 	t.Run("primary is faster than timeout", func(t *testing.T) {
 		var out string
 		err := Secondary(
@@ -73,7 +83,7 @@ func TestSecondary(t *testing.T) {
 			func(context.Context) error {
 				return assert.AnError
 			},
-			func(ctx context.Context) error {
+			func(context.Context) error {
 				atomic.AddInt32(&counter, 1)
 				time.Sleep(time.Second)
 				out = "secondary"
@@ -171,16 +181,8 @@ func TestSecondary(t *testing.T) {
 		err := Secondary(
 			ctx,
 			time.Millisecond,
-			func(ctx context.Context) error {
-				select {
-				case <-time.Tick(time.Second):
-					t.FailNow()
-					return nil
-				case <-ctx.Done():
-					return ctx.Err()
-				}
-			},
-			func(ctx context.Context) error {
+			failOrExit,
+			func(context.Context) error {
 				out = "secondary"
 				return nil
 			},
@@ -195,34 +197,18 @@ func TestSecondary(t *testing.T) {
 		err := Secondary(
 			ctx,
 			time.Millisecond,
-			func(ctx context.Context) error {
-				select {
-				case <-time.Tick(time.Second):
-					t.FailNow()
-					return nil
-				case <-ctx.Done():
-					return ctx.Err()
-				}
-			},
-			func(ctx context.Context) error {
-				select {
-				case <-time.Tick(time.Second):
-					t.FailNow()
-					return nil
-				case <-ctx.Done():
-					return ctx.Err()
-				}
-			},
+			failOrExit,
+			failOrExit,
 		)
 		assert.NotNil(t, err)
 		assert.Equal(t, context.DeadlineExceeded, err)
 	})
 
-	t.Run("primary should proceed regardless slave slow exec", func(t *testing.T) {
+	t.Run("primary should proceed regardless secondary slow exec", func(t *testing.T) {
 		err := Secondary(
 			context.Background(),
 			time.Second/2,
-			func(ctx context.Context) error {
+			func(context.Context) error {
 				time.Sleep(time.Second)
 				return nil
 			},

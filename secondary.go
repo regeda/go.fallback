@@ -27,18 +27,19 @@ func Secondary(ctx context.Context, shiftTimeout time.Duration, primary, seconda
 		defer close(primaryCtx.done)
 		primaryCtx.err = primary(ctx)
 	}()
-	secondaryRunner := func() {
-		secondaryErr = secondary(&primaryCtx)
-	}
 	for {
 		select {
 		case <-shift.C:
-			go once.Do(secondaryRunner)
+			go once.Do(func() {
+				secondaryErr = secondary(&primaryCtx)
+			})
 		case <-primaryCtx.done:
 			if primaryCtx.err == nil {
 				return nil
 			}
-			once.Do(secondaryRunner)
+			once.Do(func() {
+				secondaryErr = secondary(ctx)
+			})
 			return secondaryErr
 		}
 	}
