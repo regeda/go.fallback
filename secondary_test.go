@@ -1,4 +1,4 @@
-package failover
+package fallback
 
 import (
 	"context"
@@ -69,7 +69,7 @@ func TestSecondary(t *testing.T) {
 			},
 		)
 		require.NotNil(t, err)
-		assert.Contains(t, err.Error(), "secondary: mortal combat")
+		assert.EqualError(t, err, "secondary: mortal combat")
 	})
 
 	t.Run("secondary should run once if primary failed", func(t *testing.T) {
@@ -102,13 +102,13 @@ func TestSecondary(t *testing.T) {
 			time.Millisecond,
 			func(ctx context.Context) error {
 				time.Sleep(time.Second / 2)
-				Sync(ctx, func() {
+				Resolve(ctx, func() {
 					out = "primary"
 				})
 				return nil
 			},
 			func(ctx context.Context) error {
-				Sync(ctx, t.FailNow)
+				Resolve(ctx, t.FailNow)
 				return nil
 			},
 		)
@@ -122,14 +122,14 @@ func TestSecondary(t *testing.T) {
 			context.Background(),
 			time.Second/2,
 			func(ctx context.Context) error {
-				Sync(ctx, func() {
+				Resolve(ctx, func() {
 					out = "primary"
 				})
 				time.Sleep(time.Second)
 				return nil
 			},
 			func(ctx context.Context) error {
-				Sync(ctx, t.FailNow)
+				Resolve(ctx, t.FailNow)
 				return nil
 			},
 		)
@@ -214,7 +214,7 @@ func TestSecondary(t *testing.T) {
 			},
 			func(ctx context.Context) error {
 				time.Sleep(2 * time.Second)
-				Sync(ctx, t.FailNow)
+				Resolve(ctx, t.FailNow)
 				return nil
 			},
 		)

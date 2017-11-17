@@ -1,4 +1,4 @@
-package failover
+package fallback
 
 import (
 	"context"
@@ -10,6 +10,13 @@ type primaryContext struct {
 	context.Context
 	done chan struct{}
 	err  error
+}
+
+func (ctx *primaryContext) resolve(f func()) {
+	<-ctx.done
+	if ctx.err != nil {
+		f()
+	}
 }
 
 func Secondary(ctx context.Context, shiftTimeout time.Duration, primary, secondary func(context.Context) error) error {
@@ -43,14 +50,4 @@ func Secondary(ctx context.Context, shiftTimeout time.Duration, primary, seconda
 			return secondaryErr
 		}
 	}
-}
-
-func Sync(ctx context.Context, resolve func()) {
-	if primaryCtx, ok := ctx.(*primaryContext); ok {
-		<-primaryCtx.done
-		if primaryCtx.err == nil {
-			return
-		}
-	}
-	resolve()
 }
