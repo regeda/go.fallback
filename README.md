@@ -1,71 +1,71 @@
-# go.failover
+# go.fallback
 
 [![Build Status](https://travis-ci.org/regeda/go.failover.svg?branch=master)](https://travis-ci.org/regeda/go.failover)
 [![Go Report Card](https://goreportcard.com/badge/github.com/regeda/go.failover)](https://goreportcard.com/report/github.com/regeda/go.failover)
 
-Failover approaches and algorithms aimed to make your request stable and reliable.
+Fallback approaches and algorithms aimed to make your request stable and reliable.
 
-## Master-Master
+## Primary
 
-The approach emits successful response from a faster master.
+The approach emits successful response from a faster primary.
 
 ```go
-func slow(context.Context) (error, func()) {
+func slow(ctx context.Context) error {
     time.Sleep(time.Second)
-    return nil, func() {
-        fmt.Println("slow")
-    }
+    fallback.Resolve(ctx, func() {
+      fmt.Println("slow")
+    })
+    return nil
 }
 
-func fast(context.Context) (error, func()) {
-    return nil, func() {
-        fmt.Println("fast")
-    }
+func fast(ctx context.Context) error {
+    fallback.Resolve(ctx, func() {
+      fmt.Println("fast")
+    })
+    return nil
 }
 
-err := failover.MasterMaster(
-    context.Background(),
-    failover.Handler(slow),
-    failover.Handler(fast),
-)
+err := fallback.Primary(context.Background(), slow, fast)
 
 // console prints "fast"
 ```
 
-## Master-Slave
+## Secondary
 
-The approach emits successful master response otherwise a slave result will be acquired.
-A slave can shift early before a master complete a job. But if a master was lucky then a slave result will be declined anyway.
+The approach emits successful primary response otherwise a secondary result will be acquired.
+A secondary can shift early before a primary complete a job. But if a primary was lucky then a secondary result will be declined anyway.
 > You shouldn't care about locks in callback functions because they are thread-safe executed.
 
 ```go
-func HandleAccuWeather(weather *Weather) failover.Handler {
-    return func(ctx context.Context) (error, func()) {
+func HandleAccuWeather(weather *Weather) func(context.Context) error {
+    return func(ctx context.Context) error {
         resp, err := accuWeather.Forecast(ctx, AccuWeatherRequest())
-        return err, func() {
+        fallback.Resolve(ctx, func() {
             accuWeatcherResponseToWeather(resp, weather)
-        }
+        })
+        return err
     }
 }
 
-func HandleOpenWeather(weather *Weather) failover.Handler {
-    return func(ctx context.Context) (error, func()) {
+func HandleOpenWeather(weather *Weather) func(context.Context) error {
+    return func(ctx context.Context) error {
         resp, err := openWeather.Forecast(ctx, OpenWeatherRequest())
-        return err, func() {
+        fallback.Resolve(ctx, func() {
             openWeatherResponseToWeather(resp, weather)
-        }
+        })
+        return err
     }
 }
 
 var weather Weather
 
-err := failover.MasterSlave(
+err := fallback.Secondary(
     context.Background(),
-    time.Second, // slave shift time
-    HandleAccuWeather(&weather), // master
-    HandleOpenWeather(&weather), // slave
+    time.Second, // secondary shift time
+    HandleAccuWeather(&weather), // primary
+    HandleOpenWeather(&weather), // secondary
 )
 ```
 
 ### Contributing
-If you know another failover approaches or algorithms then feel free to send them in a pull request. Unit tests are required.
+If you know another fallback approaches or algorithms then feel free to send them in a pull request. Unit tests are required.
