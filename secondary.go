@@ -6,47 +6,40 @@ import (
 	"time"
 )
 
-type primaryContext struct {
-	context.Context
-	done chan struct{}
-	err  error
-}
-
-func (ctx *primaryContext) resolve(f func()) {
-	<-ctx.done
-	if ctx.err != nil {
-		f()
-	}
-}
-
-func Secondary(ctx context.Context, shiftTimeout time.Duration, primary, secondary func(context.Context) error) error {
+// Secondary calls functions with a priority.
+// A secondary function will be called if a primary function
+// was failed or shift timeout was exceeded. But the successful
+// result given from a primary function will be acquired
+// in spite of a secondary execution.
+func Secondary(ctx context.Context, shiftTimeout time.Duration, primary, secondary Func) error {
 	shift := time.NewTimer(shiftTimeout)
 	defer shift.Stop()
-	primaryCtx := primaryContext{
-		Context: ctx,
-		done:    make(chan struct{}),
-	}
 	var (
-		secondaryErr error
-		once         sync.Once
+		once                       sync.Once
+		primaryErr, secondaryErr   error
+		primaryDone, secondaryDone func()
 	)
+	done := make(chan struct{})
 	go func() {
-		defer close(primaryCtx.done)
-		primaryCtx.err = primary(ctx)
+		defer close(done)
+		primaryErr, primaryDone = primary(ctx)
 	}()
+	secondaryRunner := func() {
+		secondaryErr, secondaryDone = secondary(ctx)
+	}
 	for {
 		select {
 		case <-shift.C:
-			go once.Do(func() {
-				secondaryErr = secondary(&primaryCtx)
-			})
-		case <-primaryCtx.done:
-			if primaryCtx.err == nil {
+			go once.Do(secondaryRunner)
+		case <-done:
+			if primaryErr == nil {
+				primaryDone()
 				return nil
 			}
-			once.Do(func() {
-				secondaryErr = secondary(ctx)
-			})
+			once.Do(secondaryRunner)
+			if secondaryErr == nil {
+				secondaryDone()
+			}
 			return secondaryErr
 		}
 	}

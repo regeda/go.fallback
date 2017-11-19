@@ -10,19 +10,17 @@ Fallback approaches and algorithms aimed to make your request stable and reliabl
 The approach emits successful response from a faster primary.
 
 ```go
-func slow(ctx context.Context) error {
+func slow(context.Context) (error, func()) {
     time.Sleep(time.Second)
-    fallback.Resolve(ctx, func() {
-      fmt.Println("slow")
-    })
-    return nil
+    return nil, func() {
+        fmt.Println("slow")
+    }
 }
 
-func fast(ctx context.Context) error {
-    fallback.Resolve(ctx, func() {
-      fmt.Println("fast")
-    })
-    return nil
+func fast(ctx context.Context) (error, func()) {
+    return nil, func() {
+        fmt.Println("fast")
+    }
 }
 
 err := fallback.Primary(context.Background(), slow, fast)
@@ -37,23 +35,21 @@ A secondary can shift early before a primary complete a job. But if a primary wa
 > You shouldn't care about locks in callback functions because they are thread-safe executed.
 
 ```go
-func HandleAccuWeather(weather *Weather) func(context.Context) error {
-    return func(ctx context.Context) error {
+func HandleAccuWeather(weather *Weather) fallback.Func {
+    return func(ctx context.Context) (error, func()) {
         resp, err := accuWeather.Forecast(ctx, AccuWeatherRequest())
-        fallback.Resolve(ctx, func() {
+        return err, func() {
             accuWeatcherResponseToWeather(resp, weather)
-        })
-        return err
+        }
     }
 }
 
-func HandleOpenWeather(weather *Weather) func(context.Context) error {
-    return func(ctx context.Context) error {
+func HandleOpenWeather(weather *Weather) fallback.Func {
+    return func(ctx context.Context) (error, func()) {
         resp, err := openWeather.Forecast(ctx, OpenWeatherRequest())
-        fallback.Resolve(ctx, func() {
+        return err, func() {
             openWeatherResponseToWeather(resp, weather)
-        })
-        return err
+        }
     }
 }
 

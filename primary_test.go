@@ -15,19 +15,16 @@ func TestPrimary(t *testing.T) {
 		var out string
 		err := Primary(
 			context.Background(),
-			func(ctx context.Context) error {
-				time.Sleep(time.Millisecond)
-				Resolve(ctx, func() {
+			func(context.Context) (error, func()) {
+				return nil, func() {
 					out = "first"
-				})
-				return nil
+				}
 			},
-			func(ctx context.Context) error {
+			func(context.Context) (error, func()) {
 				time.Sleep(time.Second / 2)
-				Resolve(ctx, func() {
+				return nil, func() {
 					out = "second"
-				})
-				return nil
+				}
 			},
 		)
 		require.Nil(t, err)
@@ -37,13 +34,12 @@ func TestPrimary(t *testing.T) {
 	t.Run("execution was failed if all primaries were failed", func(t *testing.T) {
 		err := Primary(
 			context.Background(),
-			func(context.Context) error {
-				time.Sleep(time.Millisecond)
-				return errors.New("first failed")
+			func(context.Context) (error, func()) {
+				return errors.New("first failed"), t.FailNow
 			},
-			func(context.Context) error {
+			func(context.Context) (error, func()) {
 				time.Sleep(time.Second / 2)
-				return errors.New("second failed")
+				return errors.New("second failed"), t.FailNow
 			},
 		)
 		require.NotNil(t, err)
@@ -54,15 +50,14 @@ func TestPrimary(t *testing.T) {
 		var out string
 		err := Primary(
 			context.Background(),
-			func(context.Context) error {
-				return assert.AnError
+			func(context.Context) (error, func()) {
+				return assert.AnError, t.FailNow
 			},
-			func(ctx context.Context) error {
+			func(context.Context) (error, func()) {
 				time.Sleep(time.Second / 2)
-				Resolve(ctx, func() {
+				return nil, func() {
 					out = "second"
-				})
-				return nil
+				}
 			},
 		)
 		require.Nil(t, err)

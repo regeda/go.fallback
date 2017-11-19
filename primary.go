@@ -5,36 +5,28 @@ import (
 	"sync"
 )
 
-type broadcastContext struct {
-	context.Context
-	once sync.Once
-	done chan bool
-}
-
-func (ctx *broadcastContext) resolve(f func()) {
-	ctx.once.Do(func() {
-		f()
-		ctx.done <- true
-	})
-}
-
-func Primary(ctx context.Context, fn ...func(context.Context) error) (err error) {
+// Primary calls functions in goroutines and acquires the first successful result.
+// If a result is loaded, all remaining functions will be canceled.
+func Primary(ctx context.Context, fn ...Func) (err error) {
 	var (
-		errOnce sync.Once
-		wg      sync.WaitGroup
+		wg                sync.WaitGroup
+		errOnce, doneOnce sync.Once
 	)
-	wg.Add(len(fn))
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	broadcastCtx := broadcastContext{
-		Context: ctx,
-		done:    make(chan bool),
-	}
+	done := make(chan bool)
+	wg.Add(len(fn))
 	for _, f := range fn {
 		f := f
 		go func() {
 			defer wg.Done()
-			if ferr := f(&broadcastCtx); ferr != nil {
+			ferr, fdone := f(ctx)
+			if ferr == nil {
+				doneOnce.Do(func() {
+					fdone()
+					done <- true
+				})
+			} else {
 				errOnce.Do(func() {
 					err = ferr
 				})
@@ -43,9 +35,9 @@ func Primary(ctx context.Context, fn ...func(context.Context) error) (err error)
 	}
 	go func() {
 		wg.Wait()
-		close(broadcastCtx.done)
+		close(done)
 	}()
-	if <-broadcastCtx.done {
+	if <-done {
 		return nil
 	}
 	return

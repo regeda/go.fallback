@@ -12,13 +12,12 @@ import (
 )
 
 func TestSecondary(t *testing.T) {
-	failOrExit := func(ctx context.Context) error {
+	failOrExit := func(ctx context.Context) (error, func()) {
 		select {
 		case <-time.Tick(time.Second):
-			t.FailNow()
-			return nil
+			return nil, t.FailNow
 		case <-ctx.Done():
-			return ctx.Err()
+			return ctx.Err(), t.FailNow
 		}
 	}
 
@@ -27,13 +26,13 @@ func TestSecondary(t *testing.T) {
 		err := Secondary(
 			context.Background(),
 			time.Second/2,
-			func(context.Context) error {
-				out = "primary"
-				return nil
+			func(context.Context) (error, func()) {
+				return nil, func() {
+					out = "primary"
+				}
 			},
-			func(context.Context) error {
-				t.FailNow()
-				return nil
+			func(context.Context) (error, func()) {
+				return nil, t.FailNow
 			},
 		)
 		require.Nil(t, err)
@@ -45,12 +44,13 @@ func TestSecondary(t *testing.T) {
 		err := Secondary(
 			context.Background(),
 			time.Second/2,
-			func(context.Context) error {
-				return assert.AnError
+			func(context.Context) (error, func()) {
+				return assert.AnError, t.FailNow
 			},
-			func(context.Context) error {
-				out = "secondary"
-				return nil
+			func(context.Context) (error, func()) {
+				return nil, func() {
+					out = "secondary"
+				}
 			},
 		)
 		require.Nil(t, err)
@@ -61,11 +61,11 @@ func TestSecondary(t *testing.T) {
 		err := Secondary(
 			context.Background(),
 			time.Second/2,
-			func(context.Context) error {
-				return errors.New("primary: mortal combat")
+			func(context.Context) (error, func()) {
+				return errors.New("primary: mortal combat"), t.FailNow
 			},
-			func(context.Context) error {
-				return errors.New("secondary: mortal combat")
+			func(context.Context) (error, func()) {
+				return errors.New("secondary: mortal combat"), t.FailNow
 			},
 		)
 		require.NotNil(t, err)
@@ -80,14 +80,15 @@ func TestSecondary(t *testing.T) {
 		err := Secondary(
 			context.Background(),
 			time.Second/2,
-			func(context.Context) error {
-				return assert.AnError
+			func(context.Context) (error, func()) {
+				return assert.AnError, t.FailNow
 			},
-			func(context.Context) error {
+			func(context.Context) (error, func()) {
 				atomic.AddInt32(&counter, 1)
 				time.Sleep(time.Second)
-				out = "secondary"
-				return nil
+				return nil, func() {
+					out = "secondary"
+				}
 			},
 		)
 		require.Nil(t, err)
@@ -100,78 +101,18 @@ func TestSecondary(t *testing.T) {
 		err := Secondary(
 			context.Background(),
 			time.Millisecond,
-			func(ctx context.Context) error {
+			func(context.Context) (error, func()) {
 				time.Sleep(time.Second / 2)
-				Resolve(ctx, func() {
+				return nil, func() {
 					out = "primary"
-				})
-				return nil
+				}
 			},
-			func(ctx context.Context) error {
-				Resolve(ctx, t.FailNow)
-				return nil
+			func(context.Context) (error, func()) {
+				return nil, t.FailNow
 			},
 		)
 		require.Nil(t, err)
 		assert.Equal(t, "primary", out)
-	})
-
-	t.Run("primary should proceed regardless secondary result", func(t *testing.T) {
-		var out string
-		err := Secondary(
-			context.Background(),
-			time.Second/2,
-			func(ctx context.Context) error {
-				Resolve(ctx, func() {
-					out = "primary"
-				})
-				time.Sleep(time.Second)
-				return nil
-			},
-			func(ctx context.Context) error {
-				Resolve(ctx, t.FailNow)
-				return nil
-			},
-		)
-		require.Nil(t, err)
-		assert.Equal(t, "primary", out)
-	})
-
-	t.Run("secondary should proceed if primary failed after long delay", func(t *testing.T) {
-		var out string
-		err := Secondary(
-			context.Background(),
-			time.Second/2,
-			func(context.Context) error {
-				time.Sleep(time.Second)
-				return assert.AnError
-			},
-			func(context.Context) error {
-				out = "secondary"
-				return nil
-			},
-		)
-		require.Nil(t, err)
-		assert.Equal(t, "secondary", out)
-	})
-
-	t.Run("secondary should proceed with delay if primary failed after long delay", func(t *testing.T) {
-		var out string
-		err := Secondary(
-			context.Background(),
-			time.Millisecond,
-			func(context.Context) error {
-				time.Sleep(time.Second)
-				return assert.AnError
-			},
-			func(context.Context) error {
-				time.Sleep(2 * time.Second)
-				out = "secondary"
-				return nil
-			},
-		)
-		require.Nil(t, err)
-		assert.Equal(t, "secondary", out)
 	})
 
 	t.Run("shifted secondary should proceed if global context was deadlined", func(t *testing.T) {
@@ -182,9 +123,10 @@ func TestSecondary(t *testing.T) {
 			ctx,
 			time.Millisecond,
 			failOrExit,
-			func(context.Context) error {
-				out = "secondary"
-				return nil
+			func(context.Context) (error, func()) {
+				return nil, func() {
+					out = "secondary"
+				}
 			},
 		)
 		assert.Nil(t, err)
@@ -202,22 +144,5 @@ func TestSecondary(t *testing.T) {
 		)
 		assert.NotNil(t, err)
 		assert.Equal(t, context.DeadlineExceeded, err)
-	})
-
-	t.Run("primary should proceed regardless secondary slow exec", func(t *testing.T) {
-		err := Secondary(
-			context.Background(),
-			time.Second/2,
-			func(context.Context) error {
-				time.Sleep(time.Second)
-				return nil
-			},
-			func(ctx context.Context) error {
-				time.Sleep(2 * time.Second)
-				Resolve(ctx, t.FailNow)
-				return nil
-			},
-		)
-		require.Nil(t, err)
 	})
 }
