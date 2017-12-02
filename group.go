@@ -5,19 +5,19 @@ import (
 	"sync"
 )
 
-// Group executes functions and resolves a result.
+// Group executes functions in goroutines and wait for a result.
 type Group interface {
 	Go(func() error)
-	Resolve() bool
+	Wait() bool
 }
 
-// Primary executes functions and resolves the first non-error result.
+// Primary resolves the first non-error result.
 type Primary struct {
 	cancel context.CancelFunc
 
 	wg sync.WaitGroup
 
-	ok       bool
+	resolved bool
 	doneOnce sync.Once
 }
 
@@ -41,7 +41,7 @@ func (p *Primary) Go(f func() error) {
 		defer p.wg.Done()
 		if err := f(); err == nil {
 			p.doneOnce.Do(func() {
-				p.ok = true
+				p.resolved = true
 				if p.cancel != nil {
 					p.cancel()
 				}
@@ -50,11 +50,11 @@ func (p *Primary) Go(f func() error) {
 	}()
 }
 
-// Resolve waits for functions result.
-// Resolve fails if all functions returned an error.
-func (p *Primary) Resolve() bool {
+// Wait waits for functions result.
+// Wait fails if all functions returned an error.
+func (p *Primary) Wait() bool {
 	p.wg.Wait()
-	return p.ok
+	return p.resolved
 }
 
 const (
@@ -67,18 +67,13 @@ const (
 type Secondary struct {
 	primary Group
 
-	cancel context.CancelFunc
+	self Primary
 
 	cond  *sync.Cond
 	state int
-
-	wg sync.WaitGroup
-
-	ok       bool
-	doneOnce sync.Once
 }
 
-// NewSecondary creates Secondary group with primary dependency.
+// NewSecondary creates Secondary group on primary dependency.
 func NewSecondary(primary Group) *Secondary {
 	var m sync.Mutex
 	return &Secondary{
@@ -91,49 +86,38 @@ func NewSecondary(primary Group) *Secondary {
 // If a successful result was obtained, other functions will be canceled immediately.
 func NewSecondaryWithContext(ctx context.Context, primary Group) (*Secondary, context.Context) {
 	s := NewSecondary(primary)
-	ctx, s.cancel = context.WithCancel(ctx)
+	ctx, s.self.cancel = context.WithCancel(ctx)
 	return s, ctx
 }
 
 // Go executes a function in a goroutine.
 func (s *Secondary) Go(f func() error) {
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
+	s.self.Go(func() error {
 		s.cond.L.Lock()
 		for s.state == secondaryOpen {
 			s.cond.Wait()
 		}
 		if s.state&secondaryCancel == secondaryCancel {
 			s.cond.L.Unlock()
-			return
+			return context.Canceled
 		}
 		s.cond.L.Unlock()
-		if err := f(); err == nil {
-			s.doneOnce.Do(func() {
-				s.ok = true
-				if s.cancel != nil {
-					s.cancel()
-				}
-			})
-		}
-	}()
+		return f()
+	})
 }
 
-// Resolve waits for primary result.
+// Wait waits for primary result.
 // If a primary failed, secondary functions will be performed.
 // Otherwise secondary function will be canceled.
-func (s *Secondary) Resolve() bool {
-	if s.primary.Resolve() {
-		go s.broadcast(secondaryCancel)
+func (s *Secondary) Wait() bool {
+	if s.primary.Wait() {
+		s.broadcast(secondaryCancel)
 		return true
 	}
 
 	s.Shift()
 
-	s.wg.Wait()
-
-	return s.ok
+	return s.self.Wait()
 }
 
 // Shift run secondary functions without primary result waiting.

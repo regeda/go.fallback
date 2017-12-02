@@ -23,7 +23,7 @@ func TestSuccessfulPrimary(t *testing.T) {
 		return nil
 	})
 
-	require.True(t, p.Resolve())
+	require.True(t, p.Wait())
 	assert.Equal(t, 1, n)
 }
 
@@ -33,7 +33,7 @@ func TestFailedPrimary(t *testing.T) {
 		return assert.AnError
 	})
 
-	assert.False(t, p.Resolve())
+	assert.False(t, p.Wait())
 }
 
 func TestFailedPrimarySuccessfulSecondary(t *testing.T) {
@@ -50,7 +50,7 @@ func TestFailedPrimarySuccessfulSecondary(t *testing.T) {
 		return nil
 	})
 
-	require.True(t, s.Resolve())
+	require.True(t, s.Wait())
 	assert.Equal(t, 1, n)
 }
 
@@ -66,7 +66,7 @@ func TestSuccessfulPrimaryIsBetter(t *testing.T) {
 		return nil
 	})
 
-	require.True(t, p.Resolve())
+	require.True(t, p.Wait())
 	assert.Equal(t, 1, n)
 }
 
@@ -81,7 +81,7 @@ func TestFailedPrimaryFailedSecondary(t *testing.T) {
 		return assert.AnError
 	})
 
-	assert.False(t, s.Resolve())
+	assert.False(t, s.Wait())
 }
 
 func TestSecondaryNeverRunIfPrimaryCompleteSuccessfully(t *testing.T) {
@@ -99,7 +99,7 @@ func TestSecondaryNeverRunIfPrimaryCompleteSuccessfully(t *testing.T) {
 		return nil
 	})
 
-	require.True(t, s.Resolve())
+	require.True(t, s.Wait())
 	assert.Equal(t, 1, n)
 }
 
@@ -121,7 +121,7 @@ func TestPrimaryCompleteSuccessfullyNeverthelessShiftedSecondaryWellDone(t *test
 
 	s.Shift()
 
-	require.True(t, s.Resolve())
+	require.True(t, s.Wait())
 	assert.EqualValues(t, 1, atomic.LoadInt32(&pn))
 	assert.EqualValues(t, 1, atomic.LoadInt32(&sn))
 }
@@ -141,7 +141,7 @@ func TestPrimaryCancelOther(t *testing.T) {
 		return nil
 	})
 
-	require.True(t, p.Resolve())
+	require.True(t, p.Wait())
 	assert.EqualValues(t, 2, atomic.LoadInt32(&n))
 }
 
@@ -166,7 +166,7 @@ func TestSecondaryCancelOtherIfPrimaryFailed(t *testing.T) {
 		return nil
 	})
 
-	require.True(t, s.Resolve())
+	require.True(t, s.Wait())
 	assert.EqualValues(t, 3, atomic.LoadInt32(&n))
 }
 
@@ -194,24 +194,43 @@ func TestShiftedSecondaryCancelOtherIfPrimaryFailed(t *testing.T) {
 
 	s.Shift()
 
-	require.True(t, s.Resolve())
+	require.True(t, s.Wait())
 	assert.EqualValues(t, 3, atomic.LoadInt32(&n))
 }
 
-func BenchmarkSuccessfulPrimary(b *testing.B) {
+func BenchmarkPrimary(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		p := NewPrimary()
 		p.Go(func() error {
 			return nil
 		})
 
-		if !p.Resolve() {
+		if !p.Wait() {
 			b.FailNow()
 		}
 	}
 }
 
-func BenchmarkFailedPrimary(b *testing.B) {
+func BenchmarkPrimaryWithCanceledSecondary(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		p := NewPrimary()
+		p.Go(func() error {
+			return nil
+		})
+
+		s := NewSecondary(p)
+		s.Go(func() error {
+			b.FailNow()
+			return nil
+		})
+
+		if !s.Wait() {
+			b.FailNow()
+		}
+	}
+}
+
+func BenchmarkSecondaryWithFailedPrimary(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		p := NewPrimary()
 		p.Go(func() error {
@@ -223,7 +242,7 @@ func BenchmarkFailedPrimary(b *testing.B) {
 			return nil
 		})
 
-		if !s.Resolve() {
+		if !s.Wait() {
 			b.FailNow()
 		}
 	}
