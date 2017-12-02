@@ -44,7 +44,7 @@ ok := s.Wait() // true
 ```
 
 Also, you can run a secondary without a primary wait. It helps getting a fallback result early even if a primary will failed unexpectedly.
-```
+```go
 p := fallback.NewPrimary()
 p.Go(func() error {
   time.Sleep(time.Second)
