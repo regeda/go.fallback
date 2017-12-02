@@ -38,9 +38,9 @@ s.Go(func() error {
 })
 
 ok := s.Wait() // true
-// output:
-//    primary is broken
-//    secondary helps
+// Output:
+// primary is broken
+// secondary helps
 ```
 
 Also, you can run a secondary without a primary wait. It helps getting a fallback result early even if a primary will failed unexpectedly.
@@ -61,9 +61,9 @@ s.Go(func() error {
 s.Shift() // start a secondary immediately
 
 ok := s.Wait() // true
-// output:
-//    secondary helps
-//    primary is broken
+// Output:
+// secondary helps
+// primary is broken
 ```
 
 ### Context
@@ -82,10 +82,10 @@ p.Go(func() error {
   return nil
 })
 
-ok := p.Wait()
-// output:
-//    the first is good
-//    the second is canceled
+ok := p.Wait() // true
+// Output:
+// the first is good
+// the second is canceled
 ```
 
 ### Benchmark

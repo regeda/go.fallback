@@ -1,3 +1,5 @@
+// Package fallback provides execution, failover synchronization
+// and Context cancellation for a group of goroutines.
 package fallback
 
 import (
