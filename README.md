@@ -2,6 +2,7 @@
 
 [![Build Status](https://travis-ci.org/regeda/go.fallback.svg?branch=master)](https://travis-ci.org/regeda/go.fallback)
 [![Go Report Card](https://goreportcard.com/badge/github.com/regeda/go.fallback)](https://goreportcard.com/report/github.com/regeda/go.fallback)
+[![GoDoc](https://godoc.org/github.com/regeda/go.fallback?status.svg)](https://godoc.org/github.com/regeda/go.fallback)
 
 Fallback algorithm aimed to make your requests stable and reliable.
 
