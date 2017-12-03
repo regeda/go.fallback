@@ -18,9 +18,10 @@ func TestSuccessfulPrimary(t *testing.T) {
 	var n int
 
 	p := NewPrimary()
-	p.Go(func() error {
-		n = 1
-		return nil
+	p.Go(func() (error, func()) {
+		return nil, func() {
+			n = 1
+		}
 	})
 
 	require.True(t, p.Wait())
@@ -29,56 +30,58 @@ func TestSuccessfulPrimary(t *testing.T) {
 
 func TestFailedPrimary(t *testing.T) {
 	p := NewPrimary()
-	p.Go(func() error {
-		return assert.AnError
+	p.Go(func() (error, func()) {
+		return assert.AnError, t.FailNow
 	})
 
 	assert.False(t, p.Wait())
-}
-
-func TestFailedPrimarySuccessfulSecondary(t *testing.T) {
-	var n int
-
-	p := NewPrimary()
-	p.Go(func() error {
-		return assert.AnError
-	})
-
-	s := NewSecondary(p)
-	s.Go(func() error {
-		n = 1
-		return nil
-	})
-
-	require.True(t, s.Wait())
-	assert.Equal(t, 1, n)
 }
 
 func TestSuccessfulPrimaryIsBetter(t *testing.T) {
 	var n int
 
 	p := NewPrimary()
-	p.Go(func() error {
-		return assert.AnError
+	p.Go(func() (error, func()) {
+		return assert.AnError, t.FailNow
 	})
-	p.Go(func() error {
-		n = 1
-		return nil
+	p.Go(func() (error, func()) {
+		return nil, func() {
+			n = 1
+		}
 	})
 
 	require.True(t, p.Wait())
 	assert.Equal(t, 1, n)
 }
 
-func TestFailedPrimaryFailedSecondary(t *testing.T) {
+func TestFailedPrimarySuccessfulSecondary(t *testing.T) {
+	var n int
+
 	p := NewPrimary()
-	p.Go(func() error {
-		return assert.AnError
+	p.Go(func() (error, func()) {
+		return assert.AnError, t.FailNow
 	})
 
 	s := NewSecondary(p)
-	s.Go(func() error {
-		return assert.AnError
+	s.Go(func() (error, func()) {
+		return nil, func() {
+			n = 1
+		}
+	})
+
+	require.True(t, s.Wait())
+	assert.Equal(t, 1, n)
+}
+
+func TestFailedPrimaryFailedSecondary(t *testing.T) {
+	p := NewPrimary()
+	p.Go(func() (error, func()) {
+		return assert.AnError, t.FailNow
+	})
+
+	s := NewSecondary(p)
+	s.Go(func() (error, func()) {
+		return assert.AnError, t.FailNow
 	})
 
 	assert.False(t, s.Wait())
@@ -88,15 +91,16 @@ func TestSecondaryNeverRunIfPrimaryCompleteSuccessfully(t *testing.T) {
 	var n int
 
 	p := NewPrimary()
-	p.Go(func() error {
-		n = 1
-		return nil
+	p.Go(func() (error, func()) {
+		return nil, func() {
+			n = 1
+		}
 	})
 
 	s := NewSecondary(p)
-	s.Go(func() error {
+	s.Go(func() (error, func()) {
 		t.FailNow()
-		return nil
+		return nil, NoopFunc
 	})
 
 	require.True(t, s.Wait())
@@ -104,19 +108,26 @@ func TestSecondaryNeverRunIfPrimaryCompleteSuccessfully(t *testing.T) {
 }
 
 func TestPrimaryCompleteSuccessfullyNeverthelessShiftedSecondaryWellDone(t *testing.T) {
-	var pn, sn int32
+	var (
+		pn, sn int32
+		result string
+	)
 
 	p := NewPrimary()
-	p.Go(func() error {
+	p.Go(func() (error, func()) {
 		time.Sleep(delay)
 		atomic.AddInt32(&pn, 1)
-		return nil
+		return nil, func() {
+			result = "primary"
+		}
 	})
 
 	s := NewSecondary(p)
-	s.Go(func() error {
+	s.Go(func() (error, func()) {
 		atomic.AddInt32(&sn, 1)
-		return nil
+		return nil, func() {
+			result = "secondary"
+		}
 	})
 
 	s.Shift()
@@ -124,21 +135,22 @@ func TestPrimaryCompleteSuccessfullyNeverthelessShiftedSecondaryWellDone(t *test
 	require.True(t, s.Wait())
 	assert.EqualValues(t, 1, atomic.LoadInt32(&pn))
 	assert.EqualValues(t, 1, atomic.LoadInt32(&sn))
+	assert.Equal(t, "primary", result)
 }
 
 func TestPrimaryCancelOther(t *testing.T) {
 	var n int32
 
 	p, ctx := NewPrimaryWithContext(context.Background())
-	p.Go(func() error {
+	p.Go(func() (error, func()) {
 		time.Sleep(delay)
 		assert.Equal(t, context.Canceled, ctx.Err())
 		atomic.AddInt32(&n, 1)
-		return ctx.Err()
+		return ctx.Err(), t.FailNow
 	})
-	p.Go(func() error {
+	p.Go(func() (error, func()) {
 		atomic.AddInt32(&n, 1)
-		return nil
+		return nil, NoopFunc
 	})
 
 	require.True(t, p.Wait())
@@ -149,21 +161,21 @@ func TestSecondaryCancelOtherIfPrimaryFailed(t *testing.T) {
 	var n int32
 
 	p := NewPrimary()
-	p.Go(func() error {
+	p.Go(func() (error, func()) {
 		atomic.AddInt32(&n, 1)
-		return assert.AnError
+		return assert.AnError, t.FailNow
 	})
 
 	s, ctx := NewSecondaryWithContext(context.Background(), p)
-	s.Go(func() error {
+	s.Go(func() (error, func()) {
 		time.Sleep(delay)
 		assert.Equal(t, context.Canceled, ctx.Err())
 		atomic.AddInt32(&n, 1)
-		return ctx.Err()
+		return ctx.Err(), t.FailNow
 	})
-	s.Go(func() error {
+	s.Go(func() (error, func()) {
 		atomic.AddInt32(&n, 1)
-		return nil
+		return nil, NoopFunc
 	})
 
 	require.True(t, s.Wait())
@@ -174,22 +186,22 @@ func TestShiftedSecondaryCancelOtherIfPrimaryFailed(t *testing.T) {
 	var n int32
 
 	p := NewPrimary()
-	p.Go(func() error {
+	p.Go(func() (error, func()) {
 		atomic.AddInt32(&n, 1)
-		return assert.AnError
+		return assert.AnError, t.FailNow
 	})
 
 	s, ctx := NewSecondaryWithContext(context.Background(), p)
-	s.Go(func() error {
+	s.Go(func() (error, func()) {
 		time.Sleep(2 * delay)
 		assert.Equal(t, context.Canceled, ctx.Err())
 		atomic.AddInt32(&n, 1)
-		return ctx.Err()
+		return ctx.Err(), t.FailNow
 	})
-	s.Go(func() error {
+	s.Go(func() (error, func()) {
 		time.Sleep(delay)
 		atomic.AddInt32(&n, 1)
-		return nil
+		return nil, NoopFunc
 	})
 
 	s.Shift()
@@ -201,8 +213,8 @@ func TestShiftedSecondaryCancelOtherIfPrimaryFailed(t *testing.T) {
 func BenchmarkPrimary(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		p := NewPrimary()
-		p.Go(func() error {
-			return nil
+		p.Go(func() (error, func()) {
+			return nil, NoopFunc
 		})
 
 		if !p.Wait() {
@@ -214,14 +226,14 @@ func BenchmarkPrimary(b *testing.B) {
 func BenchmarkPrimaryWithCanceledSecondary(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		p := NewPrimary()
-		p.Go(func() error {
-			return nil
+		p.Go(func() (error, func()) {
+			return nil, NoopFunc
 		})
 
 		s := NewSecondary(p)
-		s.Go(func() error {
+		s.Go(func() (error, func()) {
 			b.FailNow()
-			return nil
+			return nil, NoopFunc
 		})
 
 		if !s.Wait() {
@@ -233,13 +245,13 @@ func BenchmarkPrimaryWithCanceledSecondary(b *testing.B) {
 func BenchmarkSecondaryWithFailedPrimary(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		p := NewPrimary()
-		p.Go(func() error {
-			return assert.AnError
+		p.Go(func() (error, func()) {
+			return assert.AnError, b.FailNow
 		})
 
 		s := NewSecondary(p)
-		s.Go(func() error {
-			return nil
+		s.Go(func() (error, func()) {
+			return nil, NoopFunc
 		})
 
 		if !s.Wait() {

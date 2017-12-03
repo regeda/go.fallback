@@ -7,9 +7,19 @@ import (
 	"sync"
 )
 
+// Func perfoms a task and returns an error or "done" function.
+//
+// "Done" function will be executed in thread-safe mode. There is you
+// can do assignments in shared memory without locks or semaphores.
+// Basically, "done" function is performed once.
+type Func func() (error, func())
+
+// NoopFunc does nothing.
+func NoopFunc() {}
+
 // Group executes functions in goroutines and wait for a result.
 type Group interface {
-	Go(func() error)
+	Go(Func)
 	Wait() bool
 }
 
@@ -19,7 +29,7 @@ type Primary struct {
 
 	wg sync.WaitGroup
 
-	resolved bool
+	doneFn   func()
 	doneOnce sync.Once
 }
 
@@ -37,13 +47,13 @@ func NewPrimaryWithContext(ctx context.Context) (*Primary, context.Context) {
 }
 
 // Go executes a function in a goroutine.
-func (p *Primary) Go(f func() error) {
+func (p *Primary) Go(f Func) {
 	p.wg.Add(1)
 	go func() {
 		defer p.wg.Done()
-		if err := f(); err == nil {
+		if err, doneFn := f(); err == nil {
 			p.doneOnce.Do(func() {
-				p.resolved = true
+				p.doneFn = doneFn
 				if p.cancel != nil {
 					p.cancel()
 				}
@@ -52,11 +62,15 @@ func (p *Primary) Go(f func() error) {
 	}()
 }
 
-// Wait waits for functions result.
+// Wait blocks until all goroutines are completed.
 // Wait fails if all functions returned an error.
 func (p *Primary) Wait() bool {
 	p.wg.Wait()
-	return p.resolved
+	if p.doneFn == nil {
+		return false
+	}
+	p.doneFn()
+	return true
 }
 
 const (
@@ -93,22 +107,22 @@ func NewSecondaryWithContext(ctx context.Context, primary Group) (*Secondary, co
 }
 
 // Go executes a function in a goroutine.
-func (s *Secondary) Go(f func() error) {
-	s.self.Go(func() error {
+func (s *Secondary) Go(f Func) {
+	s.self.Go(func() (error, func()) {
 		s.cond.L.Lock()
 		for s.state == secondaryOpen {
 			s.cond.Wait()
 		}
 		if s.state&secondaryCancel == secondaryCancel {
 			s.cond.L.Unlock()
-			return context.Canceled
+			return context.Canceled, NoopFunc
 		}
 		s.cond.L.Unlock()
 		return f()
 	})
 }
 
-// Wait waits for primary result.
+// Wait blocks until the primary is completed.
 // If a primary failed, secondary functions will be performed.
 // Otherwise secondary function will be canceled.
 func (s *Secondary) Wait() bool {
