@@ -29,6 +29,10 @@ if p.Wait() {
 // Output:
 // result = B
 ```
+> Go accepts Func type with `func() (error, func())` signature.
+> Func perfoms a task and returns an error or "done" function.
+> "Done" function will be executed in thread-safe mode. There is you can do assignments in shared memory without locks or semaphores.
+> Basically, "done" function is performed once.
 
 ### Secondary
 Secondary approach waits for primary's result and performs secondary goroutines if a primary was failed.
@@ -110,12 +114,14 @@ p.Go(func() (error, func()) {
   }
 })
 p.Go(func() (error, func()) {
-  time.Sleep(time.Second)
-  if ctx.Err() == context.Canceled {
+  select {
+  case <-time.After(time.Second):
+    return nil, func() {
+      result = "B"
+    }
+  case <-ctx.Done():
     fmt.Println("the second is canceled")
-  }
-  return ctx.Err(), func() {
-    result = "B"
+    return ctx.Err(), fallback.NoopFunc
   }
 })
 
