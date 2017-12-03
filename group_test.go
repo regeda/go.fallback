@@ -143,10 +143,14 @@ func TestPrimaryCancelOther(t *testing.T) {
 
 	p, ctx := NewPrimaryWithContext(context.Background())
 	p.Go(func() (error, func()) {
-		time.Sleep(delay)
-		assert.Equal(t, context.Canceled, ctx.Err())
 		atomic.AddInt32(&n, 1)
-		return ctx.Err(), t.FailNow
+		select {
+		case <-time.After(delay):
+			t.FailNow()
+			return nil, NoopFunc
+		case <-ctx.Done():
+			return ctx.Err(), t.FailNow
+		}
 	})
 	p.Go(func() (error, func()) {
 		atomic.AddInt32(&n, 1)
@@ -168,10 +172,14 @@ func TestSecondaryCancelOtherIfPrimaryFailed(t *testing.T) {
 
 	s, ctx := NewSecondaryWithContext(context.Background(), p)
 	s.Go(func() (error, func()) {
-		time.Sleep(delay)
-		assert.Equal(t, context.Canceled, ctx.Err())
 		atomic.AddInt32(&n, 1)
-		return ctx.Err(), t.FailNow
+		select {
+		case <-time.After(delay):
+			t.FailNow()
+			return nil, NoopFunc
+		case <-ctx.Done():
+			return ctx.Err(), t.FailNow
+		}
 	})
 	s.Go(func() (error, func()) {
 		atomic.AddInt32(&n, 1)
@@ -193,10 +201,14 @@ func TestShiftedSecondaryCancelOtherIfPrimaryFailed(t *testing.T) {
 
 	s, ctx := NewSecondaryWithContext(context.Background(), p)
 	s.Go(func() (error, func()) {
-		time.Sleep(2 * delay)
-		assert.Equal(t, context.Canceled, ctx.Err())
 		atomic.AddInt32(&n, 1)
-		return ctx.Err(), t.FailNow
+		select {
+		case <-time.After(2 * delay):
+			t.FailNow()
+			return nil, NoopFunc
+		case <-ctx.Done():
+			return ctx.Err(), t.FailNow
+		}
 	})
 	s.Go(func() (error, func()) {
 		time.Sleep(delay)
@@ -208,6 +220,34 @@ func TestShiftedSecondaryCancelOtherIfPrimaryFailed(t *testing.T) {
 
 	require.True(t, s.Wait())
 	assert.EqualValues(t, 3, atomic.LoadInt32(&n))
+}
+
+func TestShiftedSecondaryShouldBeCanceledIfPrimarySuccessfullyCompleted(t *testing.T) {
+	p := NewPrimary()
+	p.Go(func() (error, func()) {
+		return nil, NoopFunc
+	})
+
+	s, ctx := NewSecondaryWithContext(context.Background(), p)
+	s.Go(func() (error, func()) {
+		select {
+		case <-time.After(delay):
+			t.FailNow()
+			return nil, NoopFunc
+		case <-ctx.Done():
+			return ctx.Err(), t.FailNow
+		}
+	})
+
+	s.Shift()
+
+	require.True(t, s.Wait())
+
+	select {
+	case <-time.After(5 * delay):
+		t.Fatalf("secondary should be canceled")
+	case <-ctx.Done():
+	}
 }
 
 func BenchmarkPrimary(b *testing.B) {

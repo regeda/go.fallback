@@ -127,6 +127,9 @@ func (s *Secondary) Go(f Func) {
 // Otherwise secondary function will be canceled.
 func (s *Secondary) Wait() bool {
 	if s.primary.Wait() {
+		if s.self.cancel != nil {
+			s.self.cancel()
+		}
 		s.broadcast(secondaryCancel)
 		return true
 	}
