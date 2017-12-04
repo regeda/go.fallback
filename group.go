@@ -74,9 +74,9 @@ func (p *Primary) Wait() bool {
 }
 
 const (
-	secondaryOpen = iota
-	secondaryShift
-	secondaryCancel
+	open = iota
+	shift
+	cancel
 )
 
 // Secondary executes functions if a primary failed or Shift command was performed.
@@ -110,10 +110,10 @@ func NewSecondaryWithContext(ctx context.Context, primary Group) (*Secondary, co
 func (s *Secondary) Go(f Func) {
 	s.self.Go(func() (error, func()) {
 		s.cond.L.Lock()
-		for s.state == secondaryOpen {
+		for s.state == open {
 			s.cond.Wait()
 		}
-		if s.state&secondaryCancel == secondaryCancel {
+		if s.state&cancel == cancel {
 			s.cond.L.Unlock()
 			return context.Canceled, NoopFunc
 		}
@@ -130,7 +130,7 @@ func (s *Secondary) Wait() bool {
 		if s.self.cancel != nil {
 			s.self.cancel()
 		}
-		s.broadcast(secondaryCancel)
+		s.broadcast(cancel)
 		return true
 	}
 
@@ -141,7 +141,7 @@ func (s *Secondary) Wait() bool {
 
 // Shift run secondary functions without primary result waiting.
 func (s *Secondary) Shift() {
-	s.broadcast(secondaryShift)
+	s.broadcast(shift)
 }
 
 func (s *Secondary) broadcast(state int) {
