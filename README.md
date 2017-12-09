@@ -4,10 +4,9 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/regeda/go.fallback)](https://goreportcard.com/report/github.com/regeda/go.fallback)
 [![GoDoc](https://godoc.org/github.com/regeda/go.fallback?status.svg)](https://godoc.org/github.com/regeda/go.fallback)
 
-Fallback provides an easy way to make remote calls to different providers under the same task.
-Remote calls can often hang until they timed out. To avoid a failure, Fallback makes a set of standby providers for a reliable response.
+Remote calls can often hang until they timed out. To avoid a failure, Fallback makes a set of standby providers that work with the same task.
 It allows creating a hierarchy from a group of primary and secondary providers.
-Thus if none of the primary providers solved a task, secondary providers might reach the goal.
+Thus if none of the primary providers solved a task, secondary providers take a chance return a successful response.
 In the meantime, Fallback controls thread-safe execution and failover synchronization.
 
 ### Primary
