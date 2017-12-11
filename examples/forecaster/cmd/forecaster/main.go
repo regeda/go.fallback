@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/regeda/go.fallback/example/forecaster"
+	"github.com/regeda/go.fallback/examples/forecaster"
 )
 
 var approach = flag.String("approach", "", "naive|primary|secondary")
