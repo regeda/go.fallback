@@ -1,3 +1,9 @@
+// Package forecaster allows to test Fallback approach.
+//
+// The main idea is to have two different providers with a balance between an accurate data and quick data retrieving.
+// Usually, quick load gives dirty data. Dirty data allows to avoid unreliable response.
+//
+// It will work if a system was ready to take a low rate of dirty data. It's a sponsor requirement.
 package forecaster
 
 import (
@@ -6,10 +12,12 @@ import (
 )
 
 var (
+	// accurate works slowly
 	accurate = fake{
 		name: "accurate",
 		d:    delay{0.2, time.Second},
 	}
+	// quick returns dirty data
 	quick = fake{
 		name: "quick",
 		d:    delay{0.01, 200 * time.Millisecond},
