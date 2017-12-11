@@ -23,7 +23,7 @@ func secondary(ctx context.Context) (*Response, error) {
 
 	secondary := fallback.NewSecondary(primary)
 	secondary.Go(func() (func(), error) {
-		resp, err := open.Forecast(ctx)
+		resp, err := quick.Forecast(ctx)
 		return func() {
 			out = resp
 		}, err

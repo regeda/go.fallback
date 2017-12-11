@@ -10,8 +10,8 @@ var (
 		name: "accurate",
 		d:    delay{0.2, time.Second},
 	}
-	open = fake{
-		name: "open",
+	quick = fake{
+		name: "quick",
 		d:    delay{0.01, 200 * time.Millisecond},
 	}
 )
