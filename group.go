@@ -12,10 +12,7 @@ import (
 // "Done" function will be executed in thread-safe mode. There is you
 // can do assignments in shared memory without locks or semaphores.
 // Basically, "done" function is performed once.
-type Func func() (error, func())
-
-// NoopFunc does nothing.
-func NoopFunc() {}
+type Func func() (func(), error)
 
 // Group executes functions in goroutines and wait for a result.
 type Group interface {
@@ -51,7 +48,7 @@ func (p *Primary) Go(f Func) {
 	p.wg.Add(1)
 	go func() {
 		defer p.wg.Done()
-		if err, doneFn := f(); err == nil {
+		if doneFn, err := f(); err == nil {
 			p.doneOnce.Do(func() {
 				p.doneFn = doneFn
 				if p.cancel != nil {
@@ -108,14 +105,14 @@ func NewSecondaryWithContext(ctx context.Context, primary Group) (*Secondary, co
 
 // Go executes a function in a goroutine.
 func (s *Secondary) Go(f Func) {
-	s.self.Go(func() (error, func()) {
+	s.self.Go(func() (func(), error) {
 		s.cond.L.Lock()
 		for s.state == open {
 			s.cond.Wait()
 		}
 		if s.state&cancel == cancel {
 			s.cond.L.Unlock()
-			return context.Canceled, NoopFunc
+			return nil, context.Canceled
 		}
 		s.cond.L.Unlock()
 		return f()

@@ -15,24 +15,22 @@ Primary approach resolves the first non-error result. A group is successful if a
 var result string
 
 p := fallback.NewPrimary()
-p.Go(func() (error, func()) {
-  return errors.New("broken"), func() {
-    result = "A"
-  }
+p.Go(func() (func(), error) {
+  return nil, errors.New("broken")
 })
-p.Go(func() (error, func()) {
-  return nil, func() {
-    result = "B"
-  }
+p.Go(func() (func(), error) {
+  return func() {
+    result = "ok"
+  }, nil
 })
 
 if p.Wait() {
   fmt.Printf("result = ", result)
 }
 // Output:
-// result = B
+// result = ok
 ```
-> Go accepts Func type with `func() (error, func())` signature.
+> Go accepts Func type with `func() (func(), error)` signature.
 > Func perfoms a task and returns an error or "done" function.
 > "Done" function will be executed in thread-safe mode. There is you can do assignments in shared memory without locks or semaphores.
 > Basically, "done" function is performed once.
@@ -43,24 +41,20 @@ Secondary approach waits for primary's result and performs secondary goroutines 
 var result string
 
 p := fallback.NewPrimary()
-p.Go(func() (error, func()) {
+p.Go(func() (func(), error) {
   fmt.Println("primary is broken")
-  return errors.New("broken"), func() {
-    result = "A"
-  }
+  return nil, errors.New("broken")
 })
 
 s := fallback.NewSecondary(p)
-s.Go(func() (error, func()) {
-  return errors.New("broken"), func() {
-    result = "B"
-  }
+s.Go(func() (func(), error) {
+  return nil, errors.New("broken")
 })
-s.Go(func() (error, func()) {
+s.Go(func() (func(), error) {
   fmt.Println("secondary helps")
-  return nil, func() {
-    result = "C"
-  }
+  return func() {
+    result = "ok"
+  }, nil
 })
 
 if s.Wait() {
@@ -69,7 +63,7 @@ if s.Wait() {
 // Output:
 // primary is broken
 // secondary helps
-// result = C
+// result = ok
 ```
 
 Also, you can run a secondary without a primary wait. It helps getting a fallback result early even if a primary will failed unexpectedly.
@@ -77,20 +71,18 @@ Also, you can run a secondary without a primary wait. It helps getting a fallbac
 var result string
 
 p := fallback.NewPrimary()
-p.Go(func() (error, func()) {
+p.Go(func() (func(), error) {
   time.Sleep(time.Second)
   fmt.Println("primary is broken")
-  return errors.New("broken"), func() {
-    result = "A"
-  }
+  return nil, errors.New("broken")
 })
 
 s := fallback.NewSecondary(p)
-s.Go(func() (error, func()) {
+s.Go(func() (func(), error) {
   fmt.Println("secondary helps")
-  return nil, func() {
-    result = "B"
-  }
+  return func() {
+    result = "ok"
+  }, nil
 })
 
 s.Shift() // start a secondary immediately
@@ -101,7 +93,7 @@ if s.Wait() {
 // Output:
 // secondary helps
 // primary is broken
-// result = B
+// result = ok
 ```
 
 ### Context
@@ -110,21 +102,21 @@ You can create Primary or Secondary with a context. It allows cancelling a group
 var result string
 
 p, ctx := fallback.NewPrimaryWithContext(context.Background())
-p.Go(func() (error, func()) {
+p.Go(func() (func(), error) {
   fmt.Println("the first is good")
-  return nil, func() {
+  return func() {
     result = "A"
-  }
+  }, nil
 })
-p.Go(func() (error, func()) {
+p.Go(func() (func(), error) {
   select {
   case <-time.After(time.Second):
-    return nil, func() {
+    return func() {
       result = "B"
-    }
+    }, nil
   case <-ctx.Done():
     fmt.Println("the second is canceled")
-    return ctx.Err(), fallback.NoopFunc
+    return nil, ctx.Err()
   }
 })
 
