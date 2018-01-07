@@ -5,6 +5,7 @@ package fallback
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 )
 
 // Func perfoms a task and returns an error or "done" function.
@@ -71,7 +72,7 @@ func (p *Primary) Wait() bool {
 }
 
 const (
-	open = iota
+	open int32 = iota
 	shift
 	cancel
 )
@@ -82,17 +83,17 @@ type Secondary struct {
 
 	self Primary
 
-	cond  *sync.Cond
-	state int
+	l     sync.Mutex
+	state int32
 }
 
 // NewSecondary creates Secondary group on primary dependency.
 func NewSecondary(primary Group) *Secondary {
-	var m sync.Mutex
-	return &Secondary{
+	s := &Secondary{
 		primary: primary,
-		cond:    sync.NewCond(&m),
 	}
+	s.l.Lock()
+	return s
 }
 
 // NewSecondaryWithContext creates Secondary group with a context.
@@ -106,15 +107,11 @@ func NewSecondaryWithContext(ctx context.Context, primary Group) (*Secondary, co
 // Go executes a function in a goroutine.
 func (s *Secondary) Go(f Func) {
 	s.self.Go(func() (func(), error) {
-		s.cond.L.Lock()
-		for s.state == open {
-			s.cond.Wait()
-		}
-		if s.state&cancel == cancel {
-			s.cond.L.Unlock()
+		s.l.Lock()
+		s.l.Unlock()
+		if atomic.LoadInt32(&s.state) == cancel {
 			return nil, context.Canceled
 		}
-		s.cond.L.Unlock()
 		return f()
 	})
 }
@@ -141,9 +138,11 @@ func (s *Secondary) Shift() {
 	s.broadcast(shift)
 }
 
-func (s *Secondary) broadcast(state int) {
-	s.cond.L.Lock()
-	s.state |= state
-	s.cond.L.Unlock()
-	s.cond.Broadcast()
+func (s *Secondary) broadcast(state int32) {
+	if atomic.CompareAndSwapInt32(&s.state, open, state) {
+		s.l.Unlock()
+	} else {
+		// if the state was in shift, we expected cancellation only
+		atomic.CompareAndSwapInt32(&s.state, shift, state)
+	}
 }
