@@ -3,6 +3,7 @@
 [![Build Status](https://travis-ci.org/regeda/go.fallback.svg?branch=master)](https://travis-ci.org/regeda/go.fallback)
 [![Go Report Card](https://goreportcard.com/badge/github.com/regeda/go.fallback)](https://goreportcard.com/report/github.com/regeda/go.fallback)
 [![GoDoc](https://godoc.org/github.com/regeda/go.fallback?status.svg)](https://godoc.org/github.com/regeda/go.fallback)
+[![codecov](https://codecov.io/gh/regeda/go.fallback/branch/master/graph/badge.svg)](https://codecov.io/gh/regeda/go.fallback)
 
 Remote calls can often hang until they timed out. To avoid a failure, Fallback makes a set of standby providers that work with the same task.
 It allows creating a hierarchy from a group of primary and secondary providers.
@@ -132,9 +133,9 @@ if p.Wait() {
 ### Benchmark
 I have run a benchmark on MacBook Pro with CPU 2.7 GHz Intel Core i5 and RAM 8 GB 1867 MHz DDR3:
 ```
-BenchmarkPrimary-4                               2000000               804 ns/op
-BenchmarkPrimaryWithCanceledSecondary-4          1000000              1988 ns/op
-BenchmarkSecondaryWithFailedPrimary-4            1000000              2332 ns/op
+BenchmarkPrimary-4                         2000000         899 ns/op         48 B/op        1 allocs/op
+BenchmarkPrimaryWithCanceledSecondary-4    1000000        2037 ns/op        176 B/op        4 allocs/op
+BenchmarkSecondaryWithFailedPrimary-4      1000000        2529 ns/op        192 B/op        5 allocs/op
 ```
 
 ### Contributing
