@@ -1,4 +1,4 @@
-package fallback
+package fallback_test
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	fallback "github.com/regeda/go.fallback"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -19,7 +20,7 @@ func noopFn() {}
 func TestSuccessfulPrimary(t *testing.T) {
 	var n int
 
-	p := NewPrimary()
+	p := fallback.NewPrimary()
 	p.Go(func() (func(), error) {
 		return func() {
 			n = 1
@@ -31,7 +32,7 @@ func TestSuccessfulPrimary(t *testing.T) {
 }
 
 func TestFailedPrimary(t *testing.T) {
-	p := NewPrimary()
+	p := fallback.NewPrimary()
 	p.Go(func() (func(), error) {
 		return t.FailNow, assert.AnError
 	})
@@ -42,7 +43,7 @@ func TestFailedPrimary(t *testing.T) {
 func TestSuccessfulPrimaryIsBetter(t *testing.T) {
 	var n int
 
-	p := NewPrimary()
+	p := fallback.NewPrimary()
 	p.Go(func() (func(), error) {
 		return t.FailNow, assert.AnError
 	})
@@ -59,12 +60,12 @@ func TestSuccessfulPrimaryIsBetter(t *testing.T) {
 func TestFailedPrimarySuccessfulSecondary(t *testing.T) {
 	var n int
 
-	p := NewPrimary()
+	p := fallback.NewPrimary()
 	p.Go(func() (func(), error) {
 		return t.FailNow, assert.AnError
 	})
 
-	s := NewSecondary(p)
+	s := fallback.NewSecondary(p)
 	s.Go(func() (func(), error) {
 		return func() {
 			n = 1
@@ -76,12 +77,12 @@ func TestFailedPrimarySuccessfulSecondary(t *testing.T) {
 }
 
 func TestFailedPrimaryFailedSecondary(t *testing.T) {
-	p := NewPrimary()
+	p := fallback.NewPrimary()
 	p.Go(func() (func(), error) {
 		return t.FailNow, assert.AnError
 	})
 
-	s := NewSecondary(p)
+	s := fallback.NewSecondary(p)
 	s.Go(func() (func(), error) {
 		return t.FailNow, assert.AnError
 	})
@@ -92,14 +93,14 @@ func TestFailedPrimaryFailedSecondary(t *testing.T) {
 func TestSecondaryNeverRunIfPrimaryCompleteSuccessfully(t *testing.T) {
 	var n int
 
-	p := NewPrimary()
+	p := fallback.NewPrimary()
 	p.Go(func() (func(), error) {
 		return func() {
 			n = 1
 		}, nil
 	})
 
-	s := NewSecondary(p)
+	s := fallback.NewSecondary(p)
 	s.Go(func() (func(), error) {
 		t.FailNow()
 		return noopFn, nil
@@ -115,7 +116,7 @@ func TestPrimaryCompleteSuccessfullyNeverthelessShiftedSecondaryWellDone(t *test
 		result string
 	)
 
-	p := NewPrimary()
+	p := fallback.NewPrimary()
 	p.Go(func() (func(), error) {
 		time.Sleep(delay)
 		atomic.AddInt32(&pn, 1)
@@ -124,7 +125,7 @@ func TestPrimaryCompleteSuccessfullyNeverthelessShiftedSecondaryWellDone(t *test
 		}, nil
 	})
 
-	s := NewSecondary(p)
+	s := fallback.NewSecondary(p)
 	s.Go(func() (func(), error) {
 		atomic.AddInt32(&sn, 1)
 		return func() {
@@ -143,7 +144,7 @@ func TestPrimaryCompleteSuccessfullyNeverthelessShiftedSecondaryWellDone(t *test
 func TestPrimaryCancelOther(t *testing.T) {
 	var n int32
 
-	p, ctx := NewPrimaryWithContext(context.Background())
+	p, ctx := fallback.NewPrimaryWithContext(context.TODO())
 	p.Go(func() (func(), error) {
 		atomic.AddInt32(&n, 1)
 		select {
@@ -166,13 +167,13 @@ func TestPrimaryCancelOther(t *testing.T) {
 func TestSecondaryCancelOtherIfPrimaryFailed(t *testing.T) {
 	var n int32
 
-	p := NewPrimary()
+	p := fallback.NewPrimary()
 	p.Go(func() (func(), error) {
 		atomic.AddInt32(&n, 1)
 		return t.FailNow, assert.AnError
 	})
 
-	s, ctx := NewSecondaryWithContext(context.Background(), p)
+	s, ctx := fallback.NewSecondaryWithContext(context.TODO(), p)
 	s.Go(func() (func(), error) {
 		atomic.AddInt32(&n, 1)
 		select {
@@ -195,13 +196,13 @@ func TestSecondaryCancelOtherIfPrimaryFailed(t *testing.T) {
 func TestShiftedSecondaryCancelOtherIfPrimaryFailed(t *testing.T) {
 	var n int32
 
-	p := NewPrimary()
+	p := fallback.NewPrimary()
 	p.Go(func() (func(), error) {
 		atomic.AddInt32(&n, 1)
 		return t.FailNow, assert.AnError
 	})
 
-	s, ctx := NewSecondaryWithContext(context.Background(), p)
+	s, ctx := fallback.NewSecondaryWithContext(context.TODO(), p)
 	s.Go(func() (func(), error) {
 		atomic.AddInt32(&n, 1)
 		select {
@@ -225,12 +226,12 @@ func TestShiftedSecondaryCancelOtherIfPrimaryFailed(t *testing.T) {
 }
 
 func TestShiftedSecondaryShouldBeCanceledIfPrimarySuccessfullyCompleted(t *testing.T) {
-	p := NewPrimary()
+	p := fallback.NewPrimary()
 	p.Go(func() (func(), error) {
 		return noopFn, nil
 	})
 
-	s, ctx := NewSecondaryWithContext(context.Background(), p)
+	s, ctx := fallback.NewSecondaryWithContext(context.TODO(), p)
 	s.Go(func() (func(), error) {
 		select {
 		case <-time.After(delay):
@@ -254,7 +255,7 @@ func TestShiftedSecondaryShouldBeCanceledIfPrimarySuccessfullyCompleted(t *testi
 
 func BenchmarkPrimary(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		p := NewPrimary()
+		p := fallback.NewPrimary()
 		p.Go(func() (func(), error) {
 			return noopFn, nil
 		})
@@ -267,12 +268,12 @@ func BenchmarkPrimary(b *testing.B) {
 
 func BenchmarkPrimaryWithCanceledSecondary(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		p := NewPrimary()
+		p := fallback.NewPrimary()
 		p.Go(func() (func(), error) {
 			return noopFn, nil
 		})
 
-		s := NewSecondary(p)
+		s := fallback.NewSecondary(p)
 		s.Go(func() (func(), error) {
 			b.FailNow()
 			return noopFn, nil
@@ -286,12 +287,12 @@ func BenchmarkPrimaryWithCanceledSecondary(b *testing.B) {
 
 func BenchmarkSecondaryWithFailedPrimary(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		p := NewPrimary()
+		p := fallback.NewPrimary()
 		p.Go(func() (func(), error) {
 			return b.FailNow, assert.AnError
 		})
 
-		s := NewSecondary(p)
+		s := fallback.NewSecondary(p)
 		s.Go(func() (func(), error) {
 			return noopFn, nil
 		})
